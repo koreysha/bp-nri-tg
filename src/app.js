@@ -1,11 +1,9 @@
 import { Preset, filterItems } from './filters.js';
-import { parseGames, _getParseStats } from './parser.js';
-import { renderSkeleton, renderFilters, renderList } from './render.js';
+import { extractCardsWithMeta } from './embedParser.js';
 
 const CONFIG = {
-  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games', // nginx-прокси
+  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games', // nginx-прокси на bp-nri.ru/games
   CACHE_TTL_MS: 30 * 60 * 1000,
-  TZ: 'Europe/Moscow',
   HIDE_FULL_DEFAULT: true,
 };
 
@@ -27,18 +25,19 @@ main().catch(err=>{
 });
 
 async function main(){
-  renderSkeleton($list);
-  renderFilters($filters, state, onFiltersChange);
+  showSkeleton();
+  renderFilters();
 
   const html = await fetchText(CONFIG.SOURCE_URL);
   if (DEBUG) console.log('RAW HTML length:', html.length);
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  if (DEBUG) { const sample = html.slice(0, 1500).replace(/\s+/g,' ').trim(); console.log('HTML sample:', sample); }
 
-  const items = parseGames(doc);
-  if (DEBUG) console.log('Parse stats:', _getParseStats());
+  // Подключим их стили к нашей странице (чтобы карточки выглядели как на сайте)
+  adoptExternalStyles(doc);
 
-  if (!items.length) { if (DEBUG) showDebugPanel('парсер не нашёл карточки'); throw new Error('Парсер не нашёл карточки'); }
+  const items = extractCardsWithMeta(doc);
+  if (!items.length) throw new Error('Не нашли карточки .t778__wrapper');
+  if (DEBUG) console.log('Cards found:', items.length);
 
   state.items = items;
   state.cacheAt = Date.now();
@@ -47,16 +46,67 @@ async function main(){
 }
 
 function update(){
-  renderFilters($filters, state, onFiltersChange);
+  renderFilters();
   const filtered = filterItems(state.items, { preset: state.preset, hideFull: state.hideFull });
-  renderList($list, filtered);
+  renderEmbeddedCards(filtered);
   updateMainButton();
 }
 
-function onFiltersChange(patch){
-  Object.assign(state, patch);
-  if (patch.preset && window.Telegram && Telegram.WebApp) Telegram.WebApp.HapticFeedback.impactOccurred('light');
-  update();
+function renderEmbeddedCards(items){
+  if (!items.length) { $list.innerHTML = `<div class="notice">Ничего не найдено по текущим фильтрам.</div>`; return; }
+  // Вставляем HTML как есть
+  const html = items.map(it => it.html).join('\n');
+  $list.classList.add('tilda-hosted');
+  $list.innerHTML = html;
+  // Безопасность/юзабилити: ссылки открывать в новом окне
+  $list.querySelectorAll('a[href]').forEach(a => { a.setAttribute('target','_blank'); a.setAttribute('rel','noopener'); });
+}
+
+function renderFilters(){
+  const wrap = document.getElementById('filters');
+  wrap.innerHTML = '';
+  const chips = [
+    [Preset.ALL, 'Все'],
+    [Preset.TODAY, 'Сегодня'],
+    [Preset.WEEK, 'Эта неделя'],
+    [Preset.WEEKEND, 'Ближайшие выходные'],
+  ];
+  for (const [key,label] of chips){
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (state.preset===key?' active':'');
+    btn.textContent = label;
+    btn.onclick = ()=> { state.preset = key; update(); };
+    wrap.appendChild(btn);
+  }
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'chip' + (state.hideFull ? ' active' : '');
+  hideBtn.textContent = state.hideFull ? 'Скрыть без мест: ВКЛ' : 'Скрыть без мест: ВЫКЛ';
+  hideBtn.onclick = () => { state.hideFull = !state.hideFull; update(); };
+  wrap.appendChild(hideBtn);
+}
+
+function adoptExternalStyles(doc){
+  const head = document.head;
+  const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+  links.forEach(link => {
+    const href = link.getAttribute('href');
+    if (!href) return;
+    if ([...document.querySelectorAll('link[rel="stylesheet"]')].some(x=>x.href===href)) return;
+    const l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = href;
+    head.appendChild(l);
+  });
+}
+
+function showSkeleton(){
+  $list.innerHTML = '<div class="notice">Загружаю расписание…</div>';
+}
+
+function initTelegram(){
+  const tg = window.Telegram && Telegram.WebApp;
+  if (!tg) return;
+  tg.ready(); tg.expand && tg.expand();
 }
 
 function updateMainButton(){
@@ -69,16 +119,13 @@ function updateMainButton(){
   tg.MainButton.onClick(() => { state.hideFull = !state.hideFull; update(); });
 }
 
-function initTelegram(){ const tg = window.Telegram && Telegram.WebApp; if (!tg) return; tg.ready(); tg.expand && tg.expand(); }
-
 async function fetchText(url){
   const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), 15000);
   try { const res = await fetch(url, { mode: 'cors', signal: ctrl.signal, credentials: 'omit' }); if (!res.ok) throw new Error('HTTP '+res.status); return await res.text(); }
   finally { clearTimeout(t); }
 }
 
-function saveCache(items){ localStorage.setItem('bp-cache', JSON.stringify({ version:1, timestamp: Date.now(), items })); }
+function saveCache(items){ localStorage.setItem('bp-cache', JSON.stringify({ version:2, timestamp: Date.now(), items })); }
 function loadCache(){ try { const obj = JSON.parse(localStorage.getItem('bp-cache')||'null'); if (!obj || !obj.timestamp) return null; if (Date.now()-obj.timestamp > CONFIG.CACHE_TTL_MS) return null; return obj; } catch { return null; } }
 
 function showNotice(msg){ $notice.textContent = msg; $notice.hidden = false; }
-function showDebugPanel(text){ const el = document.createElement('div'); el.className='notice'; el.textContent='DEBUG: '+text; document.getElementById('app').prepend(el); }

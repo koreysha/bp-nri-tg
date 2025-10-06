@@ -1,4 +1,3 @@
-// Пресеты дат и фильтрация/сортировка (MSK-aware)
 export const Preset = { ALL:'all', TODAY:'today', WEEK:'week', WEEKEND:'weekend' };
 
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -8,7 +7,7 @@ function startOfDayMSK(d){ const m=toMSK(d); m.setHours(0,0,0,0); return fromMSK
 function endOfDayMSK(d){ const m=toMSK(d); m.setHours(23,59,59,999); return fromMSK(m); }
 
 export function getDateRange(preset, now=new Date()) {
-  const day = toMSK(now).getDay(); // 0=Sun..6=Sat (MSK)
+  const day = toMSK(now).getDay();
   switch (preset) {
     case Preset.TODAY: return { from: startOfDayMSK(now), to: endOfDayMSK(now) };
     case Preset.WEEK: {
@@ -33,7 +32,7 @@ export function filterItems(items, { preset, hideFull }, now=new Date()) {
   const { from, to } = getDateRange(preset, now);
   return items.filter(it => {
     const d = new Date(it.date);
-    const inRange = (!from || toMSK(d) >= toMSK(from)) && (!to || toMSK(d) <= toMSK(to));
+    const inRange = (!from || d >= from) && (!to || d <= to);
     const hasSpots = it.spotsFree == null ? true : (hideFull ? it.spotsFree > 0 : true);
     return inRange && (hideFull ? hasSpots : true);
   }).sort((a,b)=> new Date(a.date)-new Date(b.date));
