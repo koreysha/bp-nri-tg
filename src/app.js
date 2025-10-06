@@ -3,7 +3,7 @@ import { parseGames, _getParseStats } from './parser.js';
 import { renderSkeleton, renderFilters, renderList } from './render.js';
 
 const CONFIG = {
-  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games',
+  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games', // nginx-прокси
   CACHE_TTL_MS: 30 * 60 * 1000,
   TZ: 'Europe/Moscow',
   HIDE_FULL_DEFAULT: true,

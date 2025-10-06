@@ -2,6 +2,7 @@ let _dbg = {strict:0, fallback:0};
 export function _getParseStats(){ return _dbg; }
 
 function textOf(root){
+  // Собираем видимый текст, игнорируя STYLE/SCRIPT/NOSCRIPT
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   let out = '';
   while (walker.nextNode()) {
@@ -15,10 +16,20 @@ function textOf(root){
   return (out || '').replace(/\s+/g,' ').trim();
 }
 
+function stripCssNoise(s){
+  if (!s) return s;
+  s = s.replace(/#[a-z0-9_-]+\s*\.[^{]+\{[^}]+\}/gi, ' ');
+  s = s.replace(/\.[a-z0-9_-]+\s*\{[^}]+\}/gi, ' ');
+  s = s.replace(/\{[^}]*\}/g, ' ');
+  s = s.replace(/(background|color|border|font|transition|box-shadow)\s*:[^;]+;?/gi, ' ');
+  s = s.replace(/#rec\d+\b/gi, ' ');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 export function parseGames(doc) {
   _dbg = {strict:0, fallback:0};
   const out = [];
-  let cards = doc.querySelectorAll('.game-card, .games-card, .card, [class*="game"], [id^="rec"]');
+  let cards = doc.querySelectorAll('.t778__wrapper, .game-card, .games-card, .card, [class*="game"], [id^="rec"]');
   if (!cards || cards.length === 0) cards = doc.querySelectorAll('article, li, section');
   for (const el of cards) {
     const item = extractFromCard(el);
@@ -38,30 +49,54 @@ export function parseGames(doc) {
 }
 
 function extractFromCard(el) {
-  const text = textOf(el);
+  const text = stripCssNoise(textOf(el));
+
+  // дата
   const dateStr = pickDateFromTitle(el) || pickDate(el) || pickDateText(text);
   if (!dateStr) return null;
   const date = toISO(dateStr);
-  const title = pickGameTitle(el) || pickTitle(el) || firstLine(text);
-  const system = pickSystem(el) || guessSystem(text);
-  const short = pickShort(el) || shortFromText(text);
-  const spots = pickSpots(el);
-  const signupUrl = pickSignup(el) || pickFirstLink(el, /запис/i);
+
+  // чистый заголовок — только из .t778__title
+  const title = pickGameTitle(el);
   if (!title) return null;
+
+  // описание из мета («Система», «Мастер»)
+  const metaParts = [];
+  const mSys = (text.match(/Система:\s*([^\n#]+)/i) || [])[1];
+  const mMaster = (text.match(/Мастер:\s*([^\n#]+)/i) || [])[1];
+  if (mSys) metaParts.push('Система: ' + mSys.trim());
+  if (mMaster) metaParts.push('Мастер: ' + mMaster.trim());
+  const short = metaParts.length ? metaParts.join(' · ') : (pickShort(el) || shortFromText(text));
+
+  const system = pickSystem(el) || guessSystem(text);
+  const spots  = pickSpots(el);
+  const signupUrl = pickSignup(el) || pickFirstLink(el, /запис/i);
+
   return { id: hash([date, title, signupUrl||''].join('|')), date, title, system, short,
            spotsTotal: spots.total, spotsFree: spots.free, signupUrl };
 }
 
 function roughExtract(el){
-  const text = textOf(el);
+  const text = stripCssNoise(textOf(el));
   const dateStr = pickDateText(text);
+  if (!dateStr) return null;
+
   const title = pickGameTitle(el) || firstLine(text);
   const system = guessSystem(text);
   const signupUrl = pickFirstLink(el, /http/);
-  if (!dateStr) return null;
+
+  const metaParts = [];
+  const mSys = (text.match(/Система:\s*([^\n#]+)/i) || [])[1];
+  const mMaster = (text.match(/Мастер:\s*([^\n#]+)/i) || [])[1];
+  if (mSys) metaParts.push('Система: ' + mSys.trim());
+  if (mMaster) metaParts.push('Мастер: ' + mMaster.trim());
+  const short = metaParts.length ? metaParts.join(' · ') : shortFromText(text);
+
   const spots = pickSpots(el);
-  return { id: hash([dateStr, title||'', signupUrl||''].join('|')), date: toISO(dateStr), title, system,
-           short: shortFromText(text), spotsTotal: spots.total, spotsFree: spots.free, signupUrl };
+
+  return { id: hash([dateStr, title||'', signupUrl||''].join('|')),
+           date: toISO(dateStr), title, system, short,
+           spotsTotal: spots.total, spotsFree: spots.free, signupUrl };
 }
 
 function pickDateFromTitle(root){
@@ -79,32 +114,36 @@ function pickDateFromTitle(root){
   return `${dd}.${mm}.${year} ${time}`;
 }
 
+function pickGameTitle(root){
+  // Берём только .t778__title, жёстко отрезаем дату и мета-хвосты
+  const titleEl = root.querySelector('.t778__title');
+  if (!titleEl) return null;
+
+  let t = stripCssNoise(textOf(titleEl));
+
+  const reDatePrefix = /(Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье)\s+\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{1,2}:\d{2}\s*/i;
+  t = t.replace(reDatePrefix, '').trim();
+
+  const markers = [/Система:/i, /Мастер:/i, /За столом/i, /Подробнее/i, /Записаться/i, /СЕЗОН\b/i];
+  let cut = t.length;
+  for (const re of markers){
+    const i = t.search(re);
+    if (i !== -1 && i < cut) cut = i;
+  }
+  t = t.slice(0, cut).trim();
+  t = t.replace(/^СТРИМ\s+/i, '').trim();
+  return t || null;
+}
+
 function pickDate(root){
   const el = root.querySelector('[datetime], time, .date, .game-date');
   if (el) return el.getAttribute('datetime') || el.textContent;
   return null;
 }
-
-function pickGameTitle(root){
-  const titleEl = root.querySelector('.t778__title');
-  if (titleEl) {
-    let t = textOf(titleEl);
-    const reDate = /(Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье)\s+\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{1,2}:\d{2}\s*/i;
-    t = t.replace(reDate, '').trim();
-    t = t.split(/Система:|Мастер:/i)[0].trim();
-    t = t.replace(/^СТРИМ\s+/i, '').trim();
-    if (t) return t;
-  }
-  const alt = root.querySelector('.t-card__title, .t-name, h1, h2, h3, .title, .game-title');
-  if (alt) return textOf(alt);
-  return null;
-}
-
 function pickTitle(root){
   const el = root.querySelector('h1, h2, h3, .title, .game-title');
   return el && textOf(el);
 }
-
 function pickDateText(t){
   const MONTHS = { 'янв':1,'января':1,'фев':2,'февраля':2,'мар':3,'марта':3,'апр':4,'апреля':4,'мая':5,'май':5,'июн':6,'июня':6,'июл':7,'июля':7,'авг':8,'августа':8,'сен':9,'сентября':9,'окт':10,'октября':10,'ноя':11,'ноября':11,'дек':12,'декабря':12 };
   let mru = t.match(/\b(\d{1,2})\s+(янв(?:аря)?|фев(?:раля)?|мар(?:та)?|апр(?:еля)?|ма[йя]|июн[ья]|июл[ья]|авг(?:уста)?|сен(?:тября)?|окт(?:ября)?|ноя(?:бря)?|дек(?:абря)?)[,\s]+(?:(\d{4})\s*)?(\d{1,2}:\d{2})?/i);
@@ -121,7 +160,6 @@ function pickDateText(t){
   if (m2) return `${m2[0]} 18:00`;
   return null;
 }
-
 function toISO(s){
   const m = s.match(/(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\s+(\d{1,2}):(\d{2})/);
   if (!m) return new Date().toISOString();
@@ -130,7 +168,6 @@ function toISO(s){
   const iso = new Date(Date.UTC(year, +mo-1, +d, +hh-3, +mm)); // MSK=UTC+3
   return iso.toISOString();
 }
-
 function pickSystem(root){
   const el = root.querySelector('.tag, .badge, .system, [class*="system"]');
   if (el) return textOf(el);
@@ -150,7 +187,6 @@ function shortFromText(t){
   const s = t.replace(/\s+/g,' ').trim();
   return s.length>220 ? s.slice(0,200)+'…' : s;
 }
-
 function pickSpots(root){
   const el = root.querySelector('.seats, .spots, [class*="мест"], [class*="seat"]');
   const t = textOf(el || root);
@@ -164,7 +200,6 @@ function pickSpots(root){
   if (m) { const a=parseInt(m[1],10), b=parseInt(m[2],10); if (Number.isFinite(a)&&Number.isFinite(b)) return { total:b, free: Math.max(b-a,0) }; }
   return { total: null, free: 1 };
 }
-
 function pickSignup(root){
   let a = root.querySelector('a[href*="t.me"], a[href*="/join"], a[href*="/signup"], a[href*="/record"]');
   if (!a) a = Array.from(root.querySelectorAll("a[href]")).find(x => /запис/i.test(x.textContent||""));
@@ -175,7 +210,6 @@ function pickFirstLink(root, re){
   return a && a.href;
 }
 function firstLine(s){ return (s||'').split(/\n|\. /)[0]; }
-function norm(s){ return (s||'').replace(/\s+/g,' ').trim(); }
 function hash(s){ let h=0; for (let i=0;i<s.length;i++){ h=(h<<5)-h+s.charCodeAt(i); h|=0; } return String(h>>>0); }
 function sortByDate(arr){ return arr.sort((a,b)=> new Date(a.date)-new Date(b.date)); }
 function dedup(arr){ const seen=new Set(); return arr.filter(x=>{ if(seen.has(x.id)) return false; seen.add(x.id); return true; }); }
