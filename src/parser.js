@@ -26,6 +26,22 @@ function stripCssNoise(s){
   return s.replace(/\s+/g, ' ').trim();
 }
 
+function isValidGameCard(root, text){
+  // заголовок-объявление/баннеры отсеиваем
+  const t = (text || '').toLowerCase();
+  if (/^расписание\s+игр/.test(t)) return false; // explicit schedule heading
+  if (/итоги|анонс|заголовок|недели\s+с\s+\d{1,2}\s+/.test(t)) return false;
+
+  // Наличие явных маркеров игровой карточки
+  const hasSeats = /за\s+столом|стол\s+набран|нет\s+мест/.test(t);
+  const hasSignup = Array.from(root.querySelectorAll('a,button')).some(x => {
+    const s = (x.textContent||'').toLowerCase();
+    const href = (x.getAttribute && x.getAttribute('href')) || '';
+    return /запис/.test(s) || /t\.me/.test(href||'') || /join|signup|record/.test(href||'');
+  });
+  return hasSeats || hasSignup;
+}
+
 export function parseGames(doc) {
   _dbg = {strict:0, fallback:0};
   const out = [];
@@ -50,6 +66,7 @@ export function parseGames(doc) {
 
 function extractFromCard(el) {
   const text = stripCssNoise(textOf(el));
+  if (!isValidGameCard(el, text)) return null;
 
   // дата
   const dateStr = pickDateFromTitle(el) || pickDate(el) || pickDateText(text);
@@ -78,6 +95,7 @@ function extractFromCard(el) {
 
 function roughExtract(el){
   const text = stripCssNoise(textOf(el));
+  if (!isValidGameCard(el, text)) return null;
   const dateStr = pickDateText(text);
   if (!dateStr) return null;
 
