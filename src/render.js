@@ -32,6 +32,13 @@ export function renderFilters($root, state, onChange){
     wrap.appendChild(btn);
   }
 
+  // Видимый тумблер «Скрыть без мест» (полезно вне Telegram)
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'chip' + (state.hideFull ? ' active' : '');
+  hideBtn.textContent = state.hideFull ? 'Скрыть без мест: ВКЛ' : 'Скрыть без мест: ВЫКЛ';
+  hideBtn.onclick = () => onChange({ hideFull: !state.hideFull });
+  wrap.appendChild(hideBtn);
+
   $root.appendChild(wrap);
 }
 

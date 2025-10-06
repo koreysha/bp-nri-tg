@@ -21,6 +21,11 @@ const state = {
   cacheAt: null,
 };
 
+// Если приложение открыто вне Telegram — показываем все (удобно для GitHub Pages)
+if (!window.Telegram || !Telegram.WebApp) {
+  state.hideFull = false;
+}
+
 initTelegram();
 main().catch(err=>{
   console.error(err);
@@ -33,11 +38,9 @@ async function main(){
   renderSkeleton($list);
   renderFilters($filters, state, onFiltersChange);
 
-  // Загружаем HTML и парсим
   const html = await fetchText(CONFIG.SOURCE_URL);
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
-  // Палитра «в духе Бездны» (best-effort)
   applyPaletteFromSite(doc).catch(()=>{});
 
   const items = parseGames(doc);
@@ -58,12 +61,12 @@ function update(){
 
 function onFiltersChange(patch){
   Object.assign(state, patch);
-  if (patch.preset) Telegram.WebApp.HapticFeedback.impactOccurred('light');
+  if (patch.preset && window.Telegram && Telegram.WebApp) Telegram.WebApp.HapticFeedback.impactOccurred('light');
   update();
 }
 
 function updateMainButton(){
-  const tg = Telegram.WebApp;
+  const tg = window.Telegram && Telegram.WebApp;
   if (!tg) return;
   tg.BackButton.show();
   tg.onEvent('backButtonClicked', () => {
@@ -71,13 +74,9 @@ function updateMainButton(){
     state.hideFull = CONFIG.HIDE_FULL_DEFAULT;
     update();
   });
-
   tg.MainButton.setText(`Скрыть без мест: ${state.hideFull ? 'ВКЛ' : 'ВЫКЛ'}`);
   tg.MainButton.show();
-  tg.MainButton.onClick(() => {
-    state.hideFull = !state.hideFull;
-    update();
-  });
+  tg.MainButton.onClick(() => { state.hideFull = !state.hideFull; update(); });
 }
 
 function initTelegram(){
@@ -101,7 +100,6 @@ function saveCache(items){
   const payload = { version:1, timestamp: Date.now(), items };
   localStorage.setItem('bp-cache', JSON.stringify(payload));
 }
-
 function loadCache(){
   try {
     const raw = localStorage.getItem('bp-cache');
@@ -112,8 +110,4 @@ function loadCache(){
     return obj;
   } catch { return null; }
 }
-
-function showNotice(msg){
-  $notice.textContent = msg;
-  $notice.hidden = false;
-}
+function showNotice(msg){ $notice.textContent = msg; $notice.hidden = false; }

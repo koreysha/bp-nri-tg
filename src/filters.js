@@ -17,13 +17,10 @@ export function getDateRange(preset, now=new Date()) {
       return { from: monday, to: sunday };
     }
     case Preset.WEEKEND: {
-      // «Ближайшие выходные» после текущего дня
       const curr = startOfDay(now);
-      // JS: 0=Sunday..6=Saturday; ближайшая суббота ПОсЛЕ текущего дня
       let toSat = (6 - curr.getDay()) % 7;
-      if (toSat === 0) { 
-          toSat = 7
-      } const sat = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + toSat);
+      if (toSat === 0) toSat = 7; // «после текущего дня»
+      const sat = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate() + toSat);
       const sun = new Date(sat.getFullYear(), sat.getMonth(), sat.getDate() + 1);
       return { from: startOfDay(sat), to: endOfDay(sun) };
     }
@@ -37,7 +34,8 @@ export function filterItems(items, { preset, hideFull }, now=new Date()) {
   return items.filter(it => {
     const d = new Date(it.date);
     const inRange = (!from || d >= from) && (!to || d <= to);
-    const hasSpots = it.spotsFree == null ? !hideFull : (hideFull ? it.spotsFree > 0 : true);
-    return inRange && hasSpots;
+    // Новое правило: не смогли определить — считаем, что МЕСТА ЕСТЬ
+    const hasSpots = it.spotsFree == null ? true : (hideFull ? it.spotsFree > 0 : true);
+    return inRange && (hideFull ? hasSpots : true);
   }).sort((a,b)=> new Date(a.date)-new Date(b.date));
 }
