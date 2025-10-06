@@ -1,13 +1,23 @@
 .cards-list { display: grid; gap: 12px; }
 .card {
-  background: var(--panel); border-radius: var(--radius); padding: 12px;
-  display: grid; gap: 8px; border: 1px solid rgba(255,255,255,0.04);
+  background: #ffffff; 
+  color: #000000;
+  border-radius: var(--radius); 
+  padding: 12px;
+  display: grid; gap: 8px; 
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
 }
 .card-header { display:flex; justify-content:space-between; align-items:center; gap:6px; }
 .card-title { font-size:16px; font-weight:700; margin:0; }
-.card-sub { color: var(--muted); font-size:13px; }
-.card-desc { font-size:14px; color: #d8dae6; }
+.card-sub { color: #444; font-size:13px; }
+.card-desc { font-size:14px; color: #111; }
 .card-actions { display:flex; gap:8px; }
 .btn-primary { background: var(--accent); color: white; border: none; }
 .btn-primary:active { opacity: .9; }
 .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,.1); }
+
+.badge { background: #f2f4f7; color:#222; }
+.badge.accent { background:#efe9ff; color:#4b32c3; }
+.badge.ok { background:#e9f8ef; color:#1a7f3b; }
+.badge.danger { background:#ffe9ea; color:#c3252f; }

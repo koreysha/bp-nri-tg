@@ -46,6 +46,7 @@ async function main(){
   if (DEBUG) { const sample = html.slice(0, 1500).replace(/\s+/g, ' ').trim(); console.log('HTML sample:', sample); }
 
   applyPaletteFromSite(doc).catch(()=>{});
+  if (DEBUG) showDebugPanel('HTML bytes: '+html.length);
 
   const items = parseGames(doc);
   try { const { _getParseStats } = await import('./parser.js'); if (DEBUG) console.log('Parse stats:', _getParseStats && _getParseStats()); } catch {}
@@ -116,3 +117,9 @@ function loadCache(){
   } catch { return null; }
 }
 function showNotice(msg){ $notice.textContent = msg; $notice.hidden = false; }
+function showDebugPanel(text){
+  const el = document.createElement('div');
+  el.className = 'notice';
+  el.textContent = 'DEBUG: ' + text;
+  document.getElementById('app').prepend(el);
+}

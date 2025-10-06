@@ -23,7 +23,7 @@ export function parseGames(doc) {
 
 function extractFromCard(el) {
   const text = norm(el.textContent||'');
-  const dateStr = pickDate(el) || pickDateText(text);
+  const dateStr = pickDateFromTitle(el) || pickDate(el) || pickDateText(text);
   if (!dateStr) return null;
   const date = toISO(dateStr);
   const title = pickTitle(el) || firstLine(text);
@@ -55,6 +55,25 @@ function roughExtract(el){
   };
 }
 
+function pickDateFromTitle(root){
+  // Ищем дату вида "Вторник 7 октября 19:00" в t778__title
+  const titleEl = root.querySelector('.t778__title');
+  if (!titleEl) return null;
+  const t = (titleEl.textContent || '').trim();
+  // День недели (игнорируем), число, месяц (в Р.п.), время
+  const re = /(Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье)\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{1,2}:\d{2})/i;
+  const m = t.match(re);
+  if (!m) return null;
+  const months = {января:1,февраля:2,марта:3,апреля:4,мая:5,июня:6,июля:7,августа:8,сентября:9,октября:10,ноября:11,декабря:12};
+  const day = parseInt(m[2],10);
+  const mo = months[m[3].toLowerCase()];
+  const time = m[4];
+  const year = new Date().getFullYear();
+  // Приведем к формату DD.MM.YYYY HH:mm, дальше используем общий toISO
+  const dd = String(day).padStart(2,'0');
+  const mm = String(mo).padStart(2,'0');
+  return `${dd}.${mm}.${year} ${time}`;
+}
 function pickDate(root){
   const el = root.querySelector('[datetime], time, .date, .game-date');
   if (el) return el.getAttribute('datetime') || el.textContent;
