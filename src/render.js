@@ -69,7 +69,7 @@ function cardHtml(it){
       <div>${sys} ${spots}</div>
       <div class="card-desc">${escapeHtml(it.short||'')}</div>
       <div class="card-actions">
-        <button class="btn btn-primary" data-act="signup" data-url="${encodeURI(it.signupUrl)}">Записаться</button>
+        ${it.signupUrl ? `<button class="btn btn-primary" data-act="signup" data-url="${encodeURI(it.signupUrl)}">Записаться</button>` : ""}
       </div>
     </article>`;
 }

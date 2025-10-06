@@ -10,6 +10,8 @@ const CONFIG = {
   HIDE_FULL_DEFAULT: true,
 };
 
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+
 const $list = document.getElementById('list');
 const $filters = document.getElementById('filters');
 const $notice = document.getElementById('notice');
@@ -39,12 +41,15 @@ async function main(){
   renderFilters($filters, state, onFiltersChange);
 
   const html = await fetchText(CONFIG.SOURCE_URL);
+  if (DEBUG) console.log('RAW HTML length:', html.length);
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  if (DEBUG) { const sample = html.slice(0, 1500).replace(/\s+/g, ' ').trim(); console.log('HTML sample:', sample); }
 
   applyPaletteFromSite(doc).catch(()=>{});
 
   const items = parseGames(doc);
-  if (!items.length) throw new Error('Парсер не нашёл карточки');
+  try { const { _getParseStats } = await import('./parser.js'); if (DEBUG) console.log('Parse stats:', _getParseStats && _getParseStats()); } catch {}
+  if (!items.length) { if (DEBUG) { const $diag = document.createElement('div'); $diag.className='notice'; $diag.textContent='DEBUG: парсер не нашёл карточки. Проверьте Network→/games: статус, длину, содержимое. Возможно, страницу рендерит JS.'; document.getElementById('app').prepend($diag); } throw new Error('Парсер не нашёл карточки'); }
 
   state.items = items;
   state.cacheAt = Date.now();

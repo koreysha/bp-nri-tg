@@ -1,10 +1,12 @@
+let _dbg = {strict:0, fallback:0};
+export function _getParseStats(){ return _dbg; }
 export function parseGames(doc) {
   const out = [];
   let cards = doc.querySelectorAll('.game-card, .games-card, .card, [class*="game"]');
   if (!cards || cards.length === 0) cards = doc.querySelectorAll('article, li, section');
   for (const el of cards) {
     const item = extractFromCard(el);
-    if (item) out.push(item);
+    if (item) { out.push(item); _dbg.strict++; }
   }
   if (out.length === 0) {
     const texts = Array.from(doc.querySelectorAll('body *')).slice(0, 2000);
@@ -12,7 +14,7 @@ export function parseGames(doc) {
       const t = (el.textContent||'').trim();
       if (/(DnD|ПФ2|PF2|Ктулху|CoC|ос\.?талось|мест|Стол набран|За столом)/i.test(t)) {
         const item = roughExtract(el);
-        if (item) out.push(item);
+        if (item) { out.push(item); _dbg.fallback++; }
       }
     }
   }
@@ -29,7 +31,7 @@ function extractFromCard(el) {
   const short = pickShort(el) || shortFromText(text);
   const spots = pickSpots(el);
   const signupUrl = pickSignup(el) || pickFirstLink(el, /запис/i);
-  if (!title || !signupUrl) return null;
+  if (!title) return null;
   return {
     id: hash([date, title, signupUrl].join('|')),
     date, title, system, short,
@@ -44,7 +46,7 @@ function roughExtract(el){
   const title = firstLine(text);
   const system = guessSystem(text);
   const signupUrl = pickFirstLink(el, /http/);
-  if (!dateStr || !signupUrl) return null;
+  if (!dateStr) return null;
   const spots = pickSpots(el);
   return {
     id: hash([dateStr, title, signupUrl].join('|')),
@@ -59,6 +61,16 @@ function pickDate(root){
   return null;
 }
 function pickDateText(t){
+  // Распознаём русские месяцы: "06 окт 19:00" / "6 октября 19:00"
+  const MONTHS = { 'янв':1,'января':1,'фев':2,'февраля':2,'мар':3,'марта':3,'апр':4,'апреля':4,'мая':5,'май':5,'июн':6,'июня':6,'июл':7,'июля':7,'авг':8,'августа':8,'сен':9,'сентября':9,'окт':10,'октября':10,'ноя':11,'ноября':11,'дек':12,'декабря':12 };
+  let mru = t.match(/\b(\d{1,2})\s+(янв(?:аря)?|фев(?:раля)?|мар(?:та)?|апр(?:еля)?|ма[йя]|июн[ья]|июл[ья]|авг(?:уста)?|сен(?:тября)?|окт(?:ября)?|ноя(?:бря)?|дек(?:абря)?)[,\s]+(?:(\d{4})\s*)?(\d{1,2}:\d{2})?/i);
+  if (mru) {
+    const d = parseInt(mru[1],10);
+    const mo = MONTHS[mru[2].toLowerCase()] || (new Date().getMonth()+1);
+    const year = mru[3] ? parseInt(mru[3],10) : new Date().getFullYear();
+    const time = mru[4] || '18:00';
+    return `${String(d).padStart(2,'0')}.${String(mo).padStart(2,'0')}.${year} ${time}`;
+  }
   const m = t.match(/(\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?)[^\d]{0,6}(\d{1,2}[:]\d{2})/);
   if (m) return `${m[1]} ${m[2]}`;
   const m2 = t.match(/\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?/);
@@ -130,7 +142,8 @@ function pickSpots(root){
 }
 
 function pickSignup(root){
-  const a = root.querySelector('a[href*="t.me"], a[href*="/join"], a[href*="/signup"], a[href*="/record"]');
+  let a = root.querySelector('a[href*="t.me"], a[href*="/join"], a[href*="/signup"], a[href*="/record"]');
+  if (!a) a = Array.from(root.querySelectorAll("a[href]")).find(x => /запис/i.test(x.textContent||""));
   return a ? a.href : null;
 }
 function pickFirstLink(root, re){
