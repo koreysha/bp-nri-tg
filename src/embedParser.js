@@ -1,31 +1,35 @@
-// Парсим только мету (дату и свободные места), сами карточки оставляем как есть
+// Встраиваем .t778__wrapper как есть, мета — для фильтров
+export let lastStats = {};
+
 export function extractCardsWithMeta(doc){
-  const cards = Array.from(doc.querySelectorAll('.t778__wrapper'));
+  const wrappers = Array.from(doc.querySelectorAll('.t778__wrapper'));
   const out = [];
-  for (const el of cards){
+  let total = wrappers.length, skippedHeader = 0, noDate = 0, noSignals = 0;
+
+  for (const el of wrappers){
     const html = sanitizeOuterHTML(el.outerHTML);
     const text = visibleText(el);
 
-    // Отбрасываем общий заголовок "Расписание игр клуба ..."
-    if (/^\s*расписание\s+игр/i.test(text)) continue;
+    // 0) Отсекаем явные "шапки" (нет времени и CTA)
+    if (/^\s*расписание\s+игр/i.test(text)) { skippedHeader++; continue; }
 
-    const dateStr = pickDateFromTitle(el) || pickDateText(text);
-    if (!dateStr) continue; // без даты фильтрация теряет смысл
-
+    // 1) Дата строго из .t778__title
+    const dateStr = pickDateFromTitle(el);
+    if (!dateStr) { noDate++; continue; }
     const date = toISO(dateStr);
-    const spots = pickSpots(el, text);
-    out.push({
-      id: hash(html + '|' + date),
-      date,
-      spotsFree: spots.free,
-      html
-    });
+
+    // 2) "Сигналы" карточки: "За столом/Стол набран/Нет мест" или CTA "Записаться/СМОТРЕТЬ/t.me"
+    if (!hasSignals(el, text)) { noSignals++; continue; }
+
+    const spots = pickSpots(text);
+    out.push({ id: hash(html + '|' + date), date, spotsFree: spots.free, html });
   }
+
+  lastStats = { total, kept: out.length, skippedHeader, noDate, noSignals };
   return out;
 }
 
 function sanitizeOuterHTML(s){
-  // Скрипты не вставляем; стили оставляем (для оформления).
   return s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 }
 
@@ -42,7 +46,6 @@ function visibleText(root){
   return out.replace(/\s+/g, ' ').trim();
 }
 
-// Пример: ".t778__title" => "Вторник 7 октября 19:00 Паладины ..."
 function pickDateFromTitle(root){
   const titleEl = root.querySelector('.t778__title');
   if (!titleEl) return null;
@@ -53,27 +56,11 @@ function pickDateFromTitle(root){
   const months = {января:1,февраля:2,марта:3,апреля:4,мая:5,июня:6,июля:7,августа:8,сентября:9,октября:10,ноября:11,декабря:12};
   const day = parseInt(m[2],10);
   const mo = months[m[3].toLowerCase()];
-  const time = m[4]; const year = new Date().getFullYear();
-  const dd = String(day).padStart(2,'0'); const mm = String(mo).padStart(2,'0');
+  const time = m[4];
+  const year = new Date().getFullYear();
+  const dd = String(day).padStart(2,'0');
+  const mm = String(mo).padStart(2,'0');
   return `${dd}.${mm}.${year} ${time}`;
-}
-
-// Фоллбэк: "7 октября 19:00" и т.д.
-function pickDateText(t){
-  const MONTHS = { 'янв':1,'января':1,'фев':2,'февраля':2,'мар':3,'марта':3,'апр':4,'апреля':4,'мая':5,'май':5,'июн':6,'июня':6,'июл':7,'июля':7,'авг':8,'августа':8,'сен':9,'сентября':9,'окт':10,'октября':10,'ноя':11,'ноября':11,'дек':12,'декабря':12 };
-  let mru = t.match(/\b(\d{1,2})\s+(янв(?:аря)?|фев(?:раля)?|мар(?:та)?|апр(?:еля)?|ма[йя]|июн[ья]|июл[ья]|авг(?:уста)?|сен(?:тября)?|окт(?:ября)?|ноя(?:бря)?|дек(?:абря)?)[,\s]+(?:(\d{4})\s*)?(\d{1,2}:\d{2})?/i);
-  if (mru) {
-    const d = parseInt(mru[1],10);
-    const mo = MONTHS[mru[2].toLowerCase()] || (new Date().getMonth()+1);
-    const year = mru[3] ? parseInt(mru[3],10) : new Date().getFullYear();
-    const time = mru[4] || '18:00';
-    return `${String(d).padStart(2,'0')}.${String(mo).padStart(2,'0')}.${year} ${time}`;
-  }
-  const m = t.match(/(\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?)[^\d]{0,6}(\d{1,2}[:]\d{2})/);
-  if (m) return `${m[1]} ${m[2]}`;
-  const m2 = t.match(/\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?/);
-  if (m2) return `${m2[0]} 18:00`;
-  return null;
 }
 
 function toISO(s){
@@ -85,13 +72,22 @@ function toISO(s){
   return iso.toISOString();
 }
 
-// "Стол набран!" или "За столом 7 мест" → мета для фильтрации
-function pickSpots(root, textAll){
+function hasSignals(root, text){
+  const t = (text||'').toLowerCase();
+  const hasSeats = /за\s+столом|стол\s+набран|нет\s+мест/.test(t);
+  const hasCta = Array.from(root.querySelectorAll('a,button')).some(x => {
+    const s = (x.textContent||'').toLowerCase();
+    const href = (x.getAttribute && x.getAttribute('href')) || '';
+    return /запис|смотреть/i.test(s) || /t\.me/.test(href||'') || /(join|signup|record)/i.test(href||'');
+  });
+  return hasSeats || hasCta;
+}
+
+function pickSpots(textAll){
   const t = (textAll || '').toLowerCase();
   if (/стол\s+набран!?/i.test(t) || /нет\s+мест/i.test(t)) return { free: 0 };
   const m = t.match(/за\s+столом\s+(\d{1,2})\s+мест/iu);
-  if (m) return { free: 1 }; // набор идёт → считаем, что свободно ≥ 1
-  // иначе считаем, что места есть
+  if (m) return { free: 1 };
   return { free: 1 };
 }
 

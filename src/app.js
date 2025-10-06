@@ -1,8 +1,8 @@
 import { Preset, filterItems } from './filters.js';
-import { extractCardsWithMeta } from './embedParser.js';
+import { extractCardsWithMeta, lastStats } from './embedParser.js';
 
 const CONFIG = {
-  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games', // nginx-прокси на bp-nri.ru/games
+  SOURCE_URL: 'https://vm-aa013a8f.na4u.ru/games', // nginx-прокси
   CACHE_TTL_MS: 30 * 60 * 1000,
   HIDE_FULL_DEFAULT: true,
 };
@@ -32,12 +32,12 @@ async function main(){
   if (DEBUG) console.log('RAW HTML length:', html.length);
   const doc = new DOMParser().parseFromString(html, 'text/html');
 
-  // Подключим их стили к нашей странице (чтобы карточки выглядели как на сайте)
+  // Подключаем внешние стили с исходной страницы (чтобы карточки выглядели как на сайте)
   adoptExternalStyles(doc);
 
   const items = extractCardsWithMeta(doc);
+  if (DEBUG) console.log('Embed stats:', lastStats);
   if (!items.length) throw new Error('Не нашли карточки .t778__wrapper');
-  if (DEBUG) console.log('Cards found:', items.length);
 
   state.items = items;
   state.cacheAt = Date.now();
@@ -54,11 +54,8 @@ function update(){
 
 function renderEmbeddedCards(items){
   if (!items.length) { $list.innerHTML = `<div class="notice">Ничего не найдено по текущим фильтрам.</div>`; return; }
-  // Вставляем HTML как есть
-  const html = items.map(it => it.html).join('\n');
   $list.classList.add('tilda-hosted');
-  $list.innerHTML = html;
-  // Безопасность/юзабилити: ссылки открывать в новом окне
+  $list.innerHTML = items.map(it => it.html).join('\n');
   $list.querySelectorAll('a[href]').forEach(a => { a.setAttribute('target','_blank'); a.setAttribute('rel','noopener'); });
 }
 
@@ -125,7 +122,7 @@ async function fetchText(url){
   finally { clearTimeout(t); }
 }
 
-function saveCache(items){ localStorage.setItem('bp-cache', JSON.stringify({ version:2, timestamp: Date.now(), items })); }
-function loadCache(){ try { const obj = JSON.parse(localStorage.getItem('bp-cache')||'null'); if (!obj || !obj.timestamp) return null; if (Date.now()-obj.timestamp > CONFIG.CACHE_TTL_MS) return null; return obj; } catch { return null; } }
+function saveCache(items){ localStorage.setItem('bp-cache-embed', JSON.stringify({ version:2, timestamp: Date.now(), items })); }
+function loadCache(){ try { const obj = JSON.parse(localStorage.getItem('bp-cache-embed')||'null'); if (!obj || !obj.timestamp) return null; if (Date.now()-obj.timestamp > CONFIG.CACHE_TTL_MS) return null; return obj; } catch { return null; } }
 
 function showNotice(msg){ $notice.textContent = msg; $notice.hidden = false; }
